@@ -13,7 +13,7 @@ set +a
 
 # Recreate database schema
 echo "Recreating database schema..."
-mysql -u "$DATABASE_USER" -p"$DATABASE_PASSWORD" "$DATABASE_NAME" < create_databade_schema.sql
+mysql -u "$DATABASE_USER" -p"$DATABASE_PASSWORD" "$DATABASE_NAME" < qualification_sessions_schema.sql
 
 if [ $? -eq 0 ]; then
     echo "✅ Database schema recreated successfully!"
@@ -25,3 +25,5 @@ fi
 # Run the ETL pipeline again
 echo "Running ETL..."
 python run_etl.py --sample-size 100
+
+# mysql -u azalia2 -p123456  < pit_stop_schema.sql

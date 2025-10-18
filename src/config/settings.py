@@ -20,6 +20,9 @@ class Settings:
         self.DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD', '123456')
         self.DATABASE_NAME = os.getenv('DATABASE_NAME', 'f1_qlf_db')
         
+        # Current schema type (set dynamically by ETL pipeline)
+        self.current_schema = 'qualifying'
+        
         # Data Source Paths
         self.DATA_PATH = Path(os.getenv('DATA_PATH', 'data/'))
         self.CIRCUITS_FILE = os.getenv('CIRCUITS_FILE', 'circuits.csv')
@@ -69,6 +72,26 @@ class Settings:
     def qualifying_path(self) -> Path:
         """Get the full path to the qualifying CSV file."""
         return self.DATA_PATH / self.QUALIFYING_FILE
+    
+    @property
+    def pit_stops_path(self) -> Path:
+        """Get the full path to the pit stops CSV file."""
+        return self.DATA_PATH / 'pit_stops.csv'
+    
+    @property
+    def lap_times_path(self) -> Path:
+        """Get the full path to the lap times CSV file."""
+        return self.DATA_PATH / 'lap_times.csv'
+    
+    @property
+    def results_path(self) -> Path:
+        """Get the full path to the results CSV file."""
+        return self.DATA_PATH / 'results.csv'
+    
+    @property
+    def status_path(self) -> Path:
+        """Get the full path to the status CSV file."""
+        return self.DATA_PATH / 'status.csv'
     
     def validate_file_paths(self) -> list[str]:
         """Validate that all required CSV files exist.

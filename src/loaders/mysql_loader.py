@@ -173,29 +173,41 @@ class MySQLLoader:
             self.logger.error(f"Unexpected error loading data into {table_name}: {e}")
             return False
     
-    def load_dimensions(self, dimensions: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, int]]:
-        """Load all dimensional data with smart duplicate handling.
+    def load_dimensions(self, dimensions: Dict[str, tuple], schema_type: str = 'qualifying') -> Dict[str, Dict[str, int]]:
+        """Load all dimensional data and create CSV ID → AUTO_INCREMENT key mappings.
         
         Args:
-            dimensions: Dictionary of dimension name -> DataFrame
+            dimensions: Dictionary of dimension name -> (DataFrame_for_loading, original_ids_df)
+            schema_type: Type of schema ('qualifying', 'pit_stop', 'race_results')
             
         Returns:
-            Dictionary of lookup tables for foreign key resolution
+            Dictionary of lookup tables mapping CSV IDs to AUTO_INCREMENT keys
         """
-        self.logger.info("Loading dimensional data with smart duplicate handling")
+        self.logger.info(f"Loading dimensional data with AUTO_INCREMENT keys for {schema_type} schema")
         self.progress_logger.start_process("Dimension Loading", len(dimensions))
         
         lookup_tables = {}
         
-        # Define the loading order (dimensions first, then fact)
-        dimension_order = ['circuits', 'constructors', 'drivers', 'dates']
+        # Define the loading order based on schema type
+        if schema_type in ['pit_stop', 'race_results']:
+            dimension_order = ['circuits', 'constructors', 'drivers', 'dates', 'races']
+        else:
+            dimension_order = ['circuits', 'constructors', 'drivers', 'dates']
         
         for dim_name in dimension_order:
             if dim_name not in dimensions:
                 self.logger.warning(f"Dimension {dim_name} not found in input data")
                 continue
             
-            df = dimensions[dim_name]
+            # Handle different return types from transformers
+            if dim_name == 'dates':
+                # Date dimension returns only DataFrame (no original IDs)
+                df_for_loading = dimensions[dim_name]
+                original_ids_df = None
+            else:
+                # Other dimensions return (DataFrame, original_ids_df)
+                df_for_loading, original_ids_df = dimensions[dim_name]
+            
             table_name = f"dim_{dim_name[:-1]}" if dim_name.endswith('s') else f"dim_{dim_name}"
             
             # Special handling for dimension table names
@@ -203,83 +215,123 @@ class MySQLLoader:
                 'circuits': 'dim_circuit',
                 'constructors': 'dim_constructor',
                 'drivers': 'dim_driver',
-                'dates': 'dim_date'
+                'dates': 'dim_date',
+                'races': 'dim_race'
             }
             table_name = table_mapping.get(dim_name, table_name)
             
             # Smart loading: check if table already has data
             if self.check_table_has_data(table_name):
-                self.logger.info(f"Table {table_name} already contains data - skipping insert, creating lookup from existing data")
-                lookup_tables[dim_name] = self._create_lookup_table(table_name, dim_name)
+                self.logger.info(f"Table {table_name} already contains data - creating lookup from existing data")
+                lookup_tables[dim_name] = self._create_auto_increment_lookup(table_name, dim_name, original_ids_df)
                 self.progress_logger.log_step(f"Reused existing dimension: {dim_name}", 0)
             else:
-                # Table is empty, safe to insert new data
-                self.logger.info(f"Table {table_name} is empty - inserting {len(df):,} records")
-                success = self.load_dataframe(df, table_name)
+                # Table is empty, load new data and create mapping
+                self.logger.info(f"Table {table_name} is empty - inserting {len(df_for_loading):,} records")
+                success = self.load_dataframe(df_for_loading, table_name)
                 
                 if success:
-                    # Create lookup table for foreign key resolution
-                    lookup_tables[dim_name] = self._create_lookup_table(table_name, dim_name)
-                    self.progress_logger.log_step(f"Loaded new dimension: {dim_name}", len(df))
+                    # Create lookup table mapping CSV IDs to AUTO_INCREMENT keys
+                    lookup_tables[dim_name] = self._create_auto_increment_lookup(table_name, dim_name, original_ids_df)
+                    self.progress_logger.log_step(f"Loaded new dimension: {dim_name}", len(df_for_loading))
                 else:
                     self.logger.error(f"Failed to load dimension: {dim_name}")
                     return {}
         
-        total_records = sum(len(df) for df in dimensions.values())
+        total_records = sum(len(df_for_loading) if isinstance(dimensions[dim], tuple) else len(dimensions[dim])
+                           for dim in dimension_order if dim in dimensions)
         self.progress_logger.complete_process("Dimension Loading", total_records)
         return lookup_tables
     
-    def load_fact_data(self, fact_df: pd.DataFrame) -> bool:
-        """Load fact table data.
+    def load_fact_data(self, fact_df: pd.DataFrame, schema_type: str = 'qualifying') -> bool:
+        """Load fact table data based on schema type.
         
         Args:
             fact_df: DataFrame containing fact data
+            schema_type: Type of schema ('qualifying', 'pit_stop', 'race_results')
             
         Returns:
             True if loading successful, False otherwise
         """
-        table_name = 'facts'
+        # Map schema type to table name
+        table_mapping = {
+            'qualifying': 'facts',
+            'pit_stop': 'fact_pit_stop',
+            'race_results': 'fact_race_result'
+        }
+        
+        table_name = table_mapping.get(schema_type, 'facts')
+        self.logger.info(f"Loading fact data for {schema_type} schema into table: {table_name}")
         
         return self.load_dataframe(fact_df, table_name)
     
-    def _create_lookup_table(self, table_name: str, dimension_name: str) -> Dict[str, int]:
-        """Create a lookup dictionary for a dimension table.
+    def _create_auto_increment_lookup(self, table_name: str, dimension_name: str, original_ids_df: Optional[pd.DataFrame]) -> Dict[int, int]:
+        """Create a lookup dictionary mapping CSV IDs to AUTO_INCREMENT keys.
         
         Args:
             table_name: Database table name
             dimension_name: Logical dimension name
+            original_ids_df: DataFrame with original CSV IDs (in insertion order)
             
         Returns:
-            Dictionary mapping dimension codes to keys
+            Dictionary mapping CSV IDs to AUTO_INCREMENT keys
         """
         try:
-            # Define the code column and key column for each dimension
-            lookup_mappings = {
-                'circuits': ('circuit_key', 'circuit_key'),  # circuitId -> circuit_key
-                'constructors': ('constructor_key', 'constructor_key'),  # constructorId -> constructor_key
-                'drivers': ('driver_key', 'driver_key'),  # driverId -> driver_key
-                'dates': ('date_key', 'date_key')  # date_key -> date_key
-            }
+            if dimension_name == 'dates':
+                # Date dimension uses date_key as both CSV and DB key
+                with self.engine.connect() as conn:
+                    result = conn.execute(text(f"SELECT date_key FROM {table_name} ORDER BY date_key"))
+                    date_keys = [row[0] for row in result.fetchall()]
+                    # For dates, CSV key = DB key
+                    lookup_dict = {key: key for key in date_keys}
+                
+                self.logger.info(f"Created date lookup with {len(lookup_dict)} entries")
+                return lookup_dict
             
-            if dimension_name not in lookup_mappings:
-                self.logger.warning(f"No lookup mapping defined for dimension: {dimension_name}")
+            if original_ids_df is None:
+                self.logger.warning(f"No original IDs provided for {dimension_name}")
                 return {}
             
-            key_column, code_column = lookup_mappings[dimension_name]
+            # Get AUTO_INCREMENT keys in insertion order
+            key_column_mapping = {
+                'circuits': 'circuit_key',
+                'constructors': 'constructor_key',
+                'drivers': 'driver_key',
+                'races': 'race_key'
+            }
             
-            # Query the database to get the lookup data
-            query = f"SELECT {key_column}, {code_column} FROM {table_name}"
+            key_column = key_column_mapping.get(dimension_name)
+            if not key_column:
+                self.logger.warning(f"No key column mapping for dimension: {dimension_name}")
+                return {}
             
+            # Query AUTO_INCREMENT keys in insertion order
             with self.engine.connect() as conn:
-                result = conn.execute(text(query))
-                # For F1 data, the key and code are the same (circuitId, driverId, etc.)
-                lookup_dict = {row[1]: row[0] for row in result.fetchall()}
+                result = conn.execute(text(f"SELECT {key_column} FROM {table_name} ORDER BY {key_column}"))
+                auto_increment_keys = [row[0] for row in result.fetchall()]
             
-            self.logger.info(f"Created lookup table for {dimension_name} with {len(lookup_dict)} entries")
+            # Map CSV IDs to AUTO_INCREMENT keys based on insertion order
+            original_id_column = {
+                'circuits': 'circuitId',
+                'constructors': 'constructorId',
+                'drivers': 'driverId',
+                'races': 'raceId'
+            }[dimension_name]
+            
+            csv_ids = original_ids_df[original_id_column].tolist()
+            
+            if len(csv_ids) != len(auto_increment_keys):
+                self.logger.error(f"Mismatch in {dimension_name}: {len(csv_ids)} CSV IDs vs {len(auto_increment_keys)} DB keys")
+                return {}
+            
+            # Create mapping: CSV_ID → AUTO_INCREMENT_KEY
+            lookup_dict = dict(zip(csv_ids, auto_increment_keys))
+            
+            self.logger.info(f"Created AUTO_INCREMENT lookup for {dimension_name} with {len(lookup_dict)} entries")
             return lookup_dict
             
         except Exception as e:
-            self.logger.error(f"Error creating lookup table for {dimension_name}: {e}")
+            self.logger.error(f"Error creating AUTO_INCREMENT lookup for {dimension_name}: {e}")
             return {}
     
     def get_table_stats(self, table_name: str) -> Dict[str, Any]:
@@ -412,8 +464,11 @@ class MySQLLoader:
             self.logger.error(f"Error getting dimension counts: {e}")
             return {}
     
-    def truncate_tables(self) -> bool:
+    def truncate_tables(self, schema_type: str = 'qualifying') -> bool:
         """Truncate all tables for fresh data load.
+        
+        Args:
+            schema_type: Type of schema to determine which fact table to truncate
         
         Returns:
             True if successful, False otherwise
@@ -422,10 +477,23 @@ class MySQLLoader:
             self.logger.info("Table truncation disabled in settings")
             return True
         
-        self.logger.info("Truncating all tables for fresh data load")
+        self.logger.info(f"Truncating all tables for fresh data load ({schema_type} schema)")
+        
+        # Map schema to fact table name
+        fact_table_mapping = {
+            'qualifying': 'facts',
+            'pit_stop': 'fact_pit_stop',
+            'race_results': 'fact_race_result'
+        }
+        
+        fact_table = fact_table_mapping.get(schema_type, 'facts')
         
         # Order matters due to foreign key constraints - fact table first
-        tables_to_truncate = ['facts', 'dim_date', 'dim_driver', 'dim_constructor', 'dim_circuit']
+        tables_to_truncate = [fact_table, 'dim_race', 'dim_date', 'dim_driver', 'dim_constructor', 'dim_circuit']
+        
+        # For qualifying schema, don't try to truncate dim_race (doesn't exist)
+        if schema_type == 'qualifying':
+            tables_to_truncate.remove('dim_race')
         
         try:
             with self.engine.connect() as conn:

@@ -19,24 +19,24 @@ class FactTransformer:
         self.progress_logger = ETLProgressLogger(self.logger)
     
     def transform_qualifying(
-        self, 
+        self,
         qualifying_df: pd.DataFrame,
-        dim_lookups: Dict[str, Dict[str, int]],
+        dim_lookups: Dict[str, Dict[int, int]],
         races_df: pd.DataFrame,
         batch_start_row: int = 1
     ) -> pd.DataFrame:
-        """Transform qualifying data for facts table.
+        """Transform qualifying data for facts table (AUTO_INCREMENT schema).
         
         Args:
             qualifying_df: Raw qualifying DataFrame from CSV
-            dim_lookups: Dictionary containing dimension key lookups
+            dim_lookups: Dictionary containing CSV_ID → AUTO_INCREMENT_KEY mappings
             races_df: DataFrame with race information for date mapping
             batch_start_row: Starting row number for this batch (for error logging)
             
         Returns:
-            Transformed DataFrame ready for facts table
+            Transformed DataFrame ready for facts table (without qualifying_id)
         """
-        self.logger.info(f"Transforming {len(qualifying_df):,} qualifying records for fact table")
+        self.logger.info(f"Transforming {len(qualifying_df):,} qualifying records for AUTO_INCREMENT fact table")
         self.progress_logger.start_process("Qualifying Fact Transformation", 7)
         
         # Create a copy to avoid modifying the original
@@ -62,34 +62,34 @@ class FactTransformer:
         self.progress_logger.log_step("Deriving qualifying status")
         df = self._derive_qualifying_status(df)
         
-        # Step 5: Add dimension foreign keys
-        self.progress_logger.log_step("Adding dimension foreign keys")
-        df = self._add_dimension_keys(df, dim_lookups)
+        # Step 5: Add dimension foreign keys using AUTO_INCREMENT mappings
+        self.progress_logger.log_step("Adding AUTO_INCREMENT dimension foreign keys")
+        df = self._add_auto_increment_dimension_keys(df, dim_lookups)
         
         # Step 6: Add business measures
         self.progress_logger.log_step("Adding business measures and indicators")
         df = self._add_business_measures(df)
         
-        # Step 7: Final cleanup and column selection
-        self.progress_logger.log_step("Final cleanup and column selection")
-        df = self._finalize_fact_data(df)
+        # Step 7: Final cleanup and column selection (exclude qualifying_id)
+        self.progress_logger.log_step("Final cleanup and column selection for AUTO_INCREMENT")
+        df = self._finalize_auto_increment_fact_data(df)
         
         self.progress_logger.complete_process("Qualifying Fact Transformation", len(df))
         self.logger.info(f"Transformation complete: {len(df):,} valid records, {skipped_count:,} skipped")
         return df
     
     def _validate_and_filter_records(
-        self, 
-        df: pd.DataFrame, 
-        dim_lookups: Dict[str, Dict[str, int]], 
+        self,
+        df: pd.DataFrame,
+        dim_lookups: Dict[str, Dict[int, int]],
         races_df: pd.DataFrame,
         batch_start_row: int
     ) -> Tuple[pd.DataFrame, int]:
-        """Validate records and filter out invalid ones.
+        """Validate records and filter out invalid ones (AUTO_INCREMENT version).
         
         Args:
             df: Raw qualifying DataFrame
-            dim_lookups: Dimension lookup dictionaries
+            dim_lookups: Dimension lookup dictionaries (CSV_ID → AUTO_INCREMENT_KEY)
             races_df: Race information DataFrame
             batch_start_row: Starting row for error logging
             
@@ -104,7 +104,7 @@ class FactTransformer:
             'invalid_data': 0
         }
         
-        # Create race lookup for validation
+        # Create lookup sets for validation (using CSV IDs)
         race_lookup = set(races_df['raceId'].values) if 'raceId' in races_df.columns else set()
         driver_lookup = set(dim_lookups.get('drivers', {}).keys())
         constructor_lookup = set(dim_lookups.get('constructors', {}).keys())
@@ -112,19 +112,19 @@ class FactTransformer:
         # Create validation mask
         valid_mask = pd.Series([True] * len(df), index=df.index)
         
-        # Check for missing drivers
+        # Check for missing drivers (using CSV driverId)
         if 'driverId' in df.columns:
             missing_driver_mask = ~df['driverId'].isin(driver_lookup)
             skipped_reasons['missing_driver'] = missing_driver_mask.sum()
             valid_mask &= ~missing_driver_mask
         
-        # Check for missing constructors
+        # Check for missing constructors (using CSV constructorId)
         if 'constructorId' in df.columns:
             missing_constructor_mask = ~df['constructorId'].isin(constructor_lookup)
             skipped_reasons['missing_constructor'] = missing_constructor_mask.sum()
             valid_mask &= ~missing_constructor_mask
         
-        # Check for missing races
+        # Check for missing races (using CSV raceId)
         if 'raceId' in df.columns:
             missing_race_mask = ~df['raceId'].isin(race_lookup)
             skipped_reasons['missing_race'] = missing_race_mask.sum()
@@ -279,34 +279,47 @@ class FactTransformer:
         
         return df
     
-    def _add_dimension_keys(self, df: pd.DataFrame, dim_lookups: Dict[str, Dict[str, int]]) -> pd.DataFrame:
-        """Add foreign keys for dimensional tables.
+    def _add_auto_increment_dimension_keys(self, df: pd.DataFrame, dim_lookups: Dict[str, Dict[int, int]]) -> pd.DataFrame:
+        """Add foreign keys for dimensional tables using AUTO_INCREMENT mappings.
         
         Args:
             df: Qualifying DataFrame
-            dim_lookups: Dictionary containing dimension key lookups
+            dim_lookups: Dictionary containing CSV_ID → AUTO_INCREMENT_KEY mappings
             
         Returns:
-            DataFrame with dimension keys added
+            DataFrame with AUTO_INCREMENT dimension keys added
         """
-        # Circuit keys (with fallback to unknown circuit)
-        unknown_circuit_key = 999  # As defined in dimension transformer
+        # Circuit keys - map CSV circuitId to AUTO_INCREMENT circuit_key
         if 'circuits' in dim_lookups:
             df['dim_circuit_circuit_key'] = df['circuitId'].map(dim_lookups['circuits'])
             unmapped_circuits = df[df['dim_circuit_circuit_key'].isna()]['circuitId'].nunique()
             if unmapped_circuits > 0:
-                self.logger.info(f"Mapping {unmapped_circuits} unmapped circuits to 'Unknown Circuit' (key {unknown_circuit_key})")
-            df['dim_circuit_circuit_key'] = df['dim_circuit_circuit_key'].fillna(unknown_circuit_key).astype(int)
+                self.logger.warning(f"Found {unmapped_circuits} unmapped circuits - these records will be skipped")
+                # For AUTO_INCREMENT, we can't use fallback keys - skip these records
+                df = df.dropna(subset=['dim_circuit_circuit_key'])
+            df['dim_circuit_circuit_key'] = df['dim_circuit_circuit_key'].astype(int)
         
-        # Constructor keys (should all be valid due to pre-filtering)
+        # Constructor keys - map CSV constructorId to AUTO_INCREMENT constructor_key
         if 'constructors' in dim_lookups:
-            df['dim_constructor_constructor_key'] = df['constructorId'].map(dim_lookups['constructors']).astype(int)
+            df['dim_constructor_constructor_key'] = df['constructorId'].map(dim_lookups['constructors'])
+            # Should all be valid due to pre-filtering, but check anyway
+            unmapped_constructors = df[df['dim_constructor_constructor_key'].isna()]
+            if len(unmapped_constructors) > 0:
+                self.logger.error(f"Found {len(unmapped_constructors)} unmapped constructors after validation!")
+                df = df.dropna(subset=['dim_constructor_constructor_key'])
+            df['dim_constructor_constructor_key'] = df['dim_constructor_constructor_key'].astype(int)
         
-        # Driver keys (should all be valid due to pre-filtering)
+        # Driver keys - map CSV driverId to AUTO_INCREMENT driver_key
         if 'drivers' in dim_lookups:
-            df['dim_driver_driver_key'] = df['driverId'].map(dim_lookups['drivers']).astype(int)
+            df['dim_driver_driver_key'] = df['driverId'].map(dim_lookups['drivers'])
+            # Should all be valid due to pre-filtering, but check anyway
+            unmapped_drivers = df[df['dim_driver_driver_key'].isna()]
+            if len(unmapped_drivers) > 0:
+                self.logger.error(f"Found {len(unmapped_drivers)} unmapped drivers after validation!")
+                df = df.dropna(subset=['dim_driver_driver_key'])
+            df['dim_driver_driver_key'] = df['dim_driver_driver_key'].astype(int)
         
-        # Date keys (should all be valid due to pre-filtering)
+        # Date keys (use calculated date_key directly)
         df['dim_date_date_key'] = df['date_key'].astype(int)
         
         return df
@@ -328,26 +341,24 @@ class FactTransformer:
         
         return df
     
-    def _finalize_fact_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Final cleanup and column selection for fact table.
+    def _finalize_auto_increment_fact_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Final cleanup and column selection for AUTO_INCREMENT fact table.
         
         Args:
             df: Transformed DataFrame
             
         Returns:
-            Final DataFrame ready for database loading
+            Final DataFrame ready for database loading (without qualifying_id)
         """
-        # Select only the columns needed for the fact table (matching schema)
+        # Select only the columns needed for the fact table (NO qualifying_id - AUTO_INCREMENT handles it)
         fact_columns = [
-            'qualifyId',  # qualifying_id
             'dim_circuit_circuit_key',
-            'dim_constructor_constructor_key', 
+            'dim_constructor_constructor_key',
             'dim_driver_driver_key',
             'dim_date_date_key',
-            'raceId',  # race_id
             'position',
             'q1_ms',
-            'q2_ms', 
+            'q2_ms',
             'q3_ms',
             'status'
         ]
@@ -361,16 +372,9 @@ class FactTransformer:
         # Select columns and ensure proper data types
         df_fact = df[fact_columns].copy()
         
-        # Rename columns to match database schema
-        df_fact = df_fact.rename(columns={
-            'qualifyId': 'qualifying_id',
-            'raceId': 'race_id'
-        })
-        
-        # Ensure integer types for keys and IDs
-        key_columns = ['qualifying_id', 'race_id', 'dim_circuit_circuit_key', 
-                      'dim_constructor_constructor_key', 'dim_driver_driver_key', 
-                      'dim_date_date_key', 'position']
+        # Ensure integer types for keys
+        key_columns = ['dim_circuit_circuit_key', 'dim_constructor_constructor_key',
+                      'dim_driver_driver_key', 'dim_date_date_key', 'position']
         for col in key_columns:
             df_fact[col] = df_fact[col].fillna(0).astype(int)
         
@@ -405,6 +409,7 @@ class FactTransformer:
                         slow_times = (valid_times[time_col] > 600000).sum()
                         self.logger.warning(f"Found {slow_times} {time_col} times > 10 minutes")
         
+        self.logger.info(f"Finalized {len(df_fact)} fact records for AUTO_INCREMENT loading")
         return df_fact
     
     def _add_race_and_date_info(self, df: pd.DataFrame, races_df: pd.DataFrame) -> pd.DataFrame:

@@ -10,9 +10,8 @@ The goal of this case is to implement a dimensional model to support the analysi
 
 3. Tasks
 3.1 Data analysis and modelling
-The objective is to model the performance of the drivers during the qualification sessions. EER diagram is already done in the Workbench. Also forward engineering is done, .sql script is in the repository and called create_databade_schema.sql
-In the documentation describe the analytical goals and justify each dimensional
-model accordingly. Create a folder /reports and create the nesseccary documentation there.
+The objective is to model the performance of the drivers during the qualification sessions and  the races, i.e. the pit stops and the race final positions. Therefore, you should design and implement three star schemas. 
+In the documentation, for each model, describe the analytical goals and justify each dimensional model accordingly. Your submission should include the diagrams of the models and the database scripts to create the schemas in the DBMS of your choice.
 
 3.2 Data pipeline
 Design and implement the data engineering pipeline that populate the data model. 

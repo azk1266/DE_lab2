@@ -16,7 +16,7 @@ This project implements a dimensional model to support analysis of F1 driver per
 ### 2. Setup Database
 ```bash
 # Create database schema
-mysql -u azalia2 -p < create_databade_schema.sql
+mysql -u azalia2 -p < qualification_sessions_schema.sql
 ```
 
 ### 3. Install Dependencies
@@ -38,24 +38,27 @@ python run_etl.py
 
 ```
 lab2/
-├── .env                          # Configuration file
-├── requirements.txt              # Python dependencies
-├── run_etl.py                   # Main pipeline script
-├── create_databade_schema.sql   # Database schema
-├── data/                        # Source CSV files
+├── .env                                 # Configuration file
+├── requirements.txt                     # Python dependencies
+├── run_etl.py                           # Main pipeline script
+├── schemas/
+│   ├── qualification_sessions_schema.sql  # Database schema for qualification sessions
+│   ├── pit_stop_schema.sql
+│   ├── race_final_positions_schema.sql
+├── data/                                # Source CSV files
 │   ├── circuits.csv
 │   ├── constructors.csv
 │   ├── drivers.csv
 │   ├── races.csv
 │   └── qualifying.csv
-├── src/                         # Source code
-│   ├── config/                  # Configuration management
-│   ├── extractors/              # CSV data extraction
-│   ├── transformers/            # Data transformation
-│   ├── loaders/                 # Database loading
-│   └── utils/                   # Utilities and logging
-├── logs/                        # Processing logs (auto-created)
-└── reports/                     # Documentation
+├── src/                                # Source code
+│   ├── config/                         # Configuration management
+│   ├── extractors/                     # CSV data extraction
+│   ├── transformers/                   # Data transformation
+│   ├── loaders/                        # Database loading
+│   └── utils/                          # Utilities and logging
+├── logs/                               # Processing logs (auto-created)
+└── reports/                            # Documentation
     ├── analytical_objectives.md
     ├── pipeline_description.md
     └── usage_instructions.md

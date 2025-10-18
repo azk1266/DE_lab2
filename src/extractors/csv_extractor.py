@@ -377,8 +377,8 @@ class CSVExtractor:
                     validation_results[file_name] = False
                     continue
                 
-                # Try to read the first few rows to validate file structure
-                df_sample = pd.read_csv(file_path, nrows=5)
+                # Try to read the first 10 rows to validate file structure
+                df_sample = pd.read_csv(file_path, nrows=10)
                 if df_sample.empty:
                     self.logger.error(f"{file_name}.csv is empty")
                     validation_results[file_name] = False
@@ -392,6 +392,239 @@ class CSVExtractor:
         
         return validation_results
     
+    def extract_pit_stops(self) -> pd.DataFrame:
+        """Extract pit stop data from CSV file.
+        
+        Returns:
+            DataFrame with pit stop information
+            
+        Raises:
+            FileNotFoundError: If pit_stops.csv file doesn't exist
+            pd.errors.EmptyDataError: If the file is empty
+            Exception: For other CSV reading errors
+        """
+        file_path = settings.pit_stops_path
+        self.logger.info(f"Extracting pit stops data from {file_path}")
+        
+        try:
+            # Read pit stops CSV with specific data types
+            df = pd.read_csv(
+                file_path,
+                dtype={
+                    'raceId': 'int64',
+                    'driverId': 'int64',
+                    'stop': 'int64',
+                    'lap': 'int64',
+                    'time': 'string',
+                    'duration': 'string',
+                    'milliseconds': 'int64'
+                },
+                na_values=['', 'NULL', 'null', 'N/A', 'n/a', '\\N']
+            )
+            
+            # Validate required columns
+            required_columns = ['raceId', 'driverId', 'stop', 'lap', 'milliseconds']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns in pit_stops.csv: {missing_columns}")
+            
+            # Basic data validation
+            initial_count = len(df)
+            df = df.dropna(subset=required_columns)
+            final_count = len(df)
+            
+            if initial_count != final_count:
+                self.logger.warning(f"Dropped {initial_count - final_count} rows with missing pit stop data")
+            
+            self.logger.info(f"Successfully extracted {len(df)} pit stop records")
+            return df
+            
+        except FileNotFoundError:
+            self.logger.error(f"Pit stops file not found: {file_path}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"Pit stops file is empty: {file_path}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading pit stops file: {e}")
+            raise
+    
+    def extract_lap_times(self) -> pd.DataFrame:
+        """Extract lap times data from CSV file.
+        
+        Returns:
+            DataFrame with lap times information
+            
+        Raises:
+            FileNotFoundError: If lap_times.csv file doesn't exist
+            pd.errors.EmptyDataError: If the file is empty
+            Exception: For other CSV reading errors
+        """
+        file_path = settings.lap_times_path
+        self.logger.info(f"Extracting lap times data from {file_path}")
+        
+        try:
+            # Read lap times CSV with specific data types
+            df = pd.read_csv(
+                file_path,
+                dtype={
+                    'raceId': 'int64',
+                    'driverId': 'int64',
+                    'lap': 'int64',
+                    'position': 'int64',
+                    'time': 'string',
+                    'milliseconds': 'int64'
+                },
+                na_values=['', 'NULL', 'null', 'N/A', 'n/a', '\\N']
+            )
+            
+            # Validate required columns
+            required_columns = ['raceId', 'driverId', 'lap', 'milliseconds']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns in lap_times.csv: {missing_columns}")
+            
+            # Basic data validation
+            initial_count = len(df)
+            df = df.dropna(subset=required_columns)
+            final_count = len(df)
+            
+            if initial_count != final_count:
+                self.logger.warning(f"Dropped {initial_count - final_count} rows with missing lap times data")
+            
+            self.logger.info(f"Successfully extracted {len(df)} lap times records")
+            return df
+            
+        except FileNotFoundError:
+            self.logger.error(f"Lap times file not found: {file_path}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"Lap times file is empty: {file_path}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading lap times file: {e}")
+            raise
+    
+    def extract_results(self) -> pd.DataFrame:
+        """Extract race results data from CSV file.
+        
+        Returns:
+            DataFrame with race results information
+            
+        Raises:
+            FileNotFoundError: If results.csv file doesn't exist
+            pd.errors.EmptyDataError: If the file is empty
+            Exception: For other CSV reading errors
+        """
+        file_path = settings.results_path
+        self.logger.info(f"Extracting race results data from {file_path}")
+        
+        try:
+            # Read results CSV with specific data types (handling NA values)
+            df = pd.read_csv(
+                file_path,
+                dtype={
+                    'resultId': 'int64',
+                    'raceId': 'int64',
+                    'driverId': 'int64',
+                    'constructorId': 'int64',
+                    'number': 'string',
+                    'grid': 'Int64',  # Nullable integer
+                    'position': 'string',  # Can be 'R', 'DNF', etc.
+                    'positionText': 'string',
+                    'positionOrder': 'Int64',  # Nullable integer
+                    'points': 'float64',
+                    'laps': 'Int64',  # Nullable integer
+                    'time': 'string',
+                    'milliseconds': 'Int64',  # Nullable integer (column 12)
+                    'fastestLap': 'Int64',  # Nullable integer
+                    'rank': 'Int64',  # Nullable integer
+                    'fastestLapTime': 'string',
+                    'fastestLapSpeed': 'float64',
+                    'statusId': 'int64'
+                },
+                na_values=['', 'NULL', 'null', 'N/A', 'n/a', '\\N']
+            )
+            
+            # Validate required columns
+            required_columns = ['resultId', 'raceId', 'driverId', 'constructorId', 'statusId']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns in results.csv: {missing_columns}")
+            
+            # Basic data validation
+            initial_count = len(df)
+            df = df.dropna(subset=required_columns)
+            final_count = len(df)
+            
+            if initial_count != final_count:
+                self.logger.warning(f"Dropped {initial_count - final_count} rows with missing results data")
+            
+            self.logger.info(f"Successfully extracted {len(df)} race results records")
+            return df
+            
+        except FileNotFoundError:
+            self.logger.error(f"Results file not found: {file_path}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"Results file is empty: {file_path}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading results file: {e}")
+            raise
+    
+    def extract_status(self) -> pd.DataFrame:
+        """Extract status data from CSV file.
+        
+        Returns:
+            DataFrame with status information
+            
+        Raises:
+            FileNotFoundError: If status.csv file doesn't exist
+            pd.errors.EmptyDataError: If the file is empty
+            Exception: For other CSV reading errors
+        """
+        file_path = settings.status_path
+        self.logger.info(f"Extracting status data from {file_path}")
+        
+        try:
+            # Read status CSV with specific data types
+            df = pd.read_csv(
+                file_path,
+                dtype={
+                    'statusId': 'int64',
+                    'status': 'string'
+                },
+                na_values=['', 'NULL', 'null', 'N/A', 'n/a', '\\N']
+            )
+            
+            # Validate required columns
+            required_columns = ['statusId', 'status']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                raise ValueError(f"Missing required columns in status.csv: {missing_columns}")
+            
+            # Basic data validation
+            initial_count = len(df)
+            df = df.dropna(subset=required_columns)
+            final_count = len(df)
+            
+            if initial_count != final_count:
+                self.logger.warning(f"Dropped {initial_count - final_count} rows with missing status data")
+            
+            self.logger.info(f"Successfully extracted {len(df)} status records")
+            return df
+            
+        except FileNotFoundError:
+            self.logger.error(f"Status file not found: {file_path}")
+            raise
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"Status file is empty: {file_path}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading status file: {e}")
+            raise
+
     def get_data_summary(self) -> Dict[str, Dict[str, any]]:
         """Get summary information about all source data files.
         
@@ -442,7 +675,7 @@ class CSVExtractor:
             }
             
             # Qualifying summary (sample only for performance)
-            qualifying_sample = pd.read_csv(settings.qualifying_path, nrows=10000)
+            qualifying_sample = pd.read_csv(settings.qualifying_path, nrows=10)
             total_qualifying = sum(1 for _ in open(settings.qualifying_path)) - 1
             
             summary['qualifying'] = {
@@ -453,6 +686,30 @@ class CSVExtractor:
                 'unique_drivers': qualifying_sample['driverId'].nunique() if 'driverId' in qualifying_sample.columns else 0
             }
             
+            # Add pit stops summary
+            try:
+                pit_stops_df = self.extract_pit_stops()
+                summary['pit_stops'] = {
+                    'record_count': len(pit_stops_df),
+                    'columns': list(pit_stops_df.columns),
+                    'unique_races': pit_stops_df['raceId'].nunique(),
+                    'unique_drivers': pit_stops_df['driverId'].nunique()
+                }
+            except Exception as e:
+                summary['pit_stops'] = {'error': str(e)}
+            
+            # Add results summary
+            try:
+                results_df = self.extract_results()
+                summary['results'] = {
+                    'record_count': len(results_df),
+                    'columns': list(results_df.columns),
+                    'unique_races': results_df['raceId'].nunique(),
+                    'unique_drivers': results_df['driverId'].nunique()
+                }
+            except Exception as e:
+                summary['results'] = {'error': str(e)}
+                
         except Exception as e:
             self.logger.error(f"Error generating data summary: {e}")
             summary['error'] = str(e)

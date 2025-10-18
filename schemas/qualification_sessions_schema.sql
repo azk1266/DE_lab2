@@ -1,5 +1,3 @@
--- MySQL Workbench Forward Engineering
-
 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
@@ -11,6 +9,7 @@ SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,N
 -- -----------------------------------------------------
 -- Schema f1_qlf_db
 -- -----------------------------------------------------
+DROP SCHEMA `f1_qlf_db`;
 CREATE SCHEMA IF NOT EXISTS `f1_qlf_db` DEFAULT CHARACTER SET utf8 ;
 SHOW WARNINGS;
 USE `f1_qlf_db` ;
@@ -22,16 +21,15 @@ DROP TABLE IF EXISTS `f1_qlf_db`.`dim_circuit` ;
 
 SHOW WARNINGS;
 -- from data/circuits.csv
-CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`dim_circuit` (
-  `circuit_key` INT NOT NULL,
+CREATE TABLE IF NOT EXISTS `dim_circuit` (
+  `circuit_key` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
-  `city` VARCHAR(80) NULL, /* called 'location' in the .csv */
+  `city` VARCHAR(80) NULL,
   `country` VARCHAR(80) NULL,
   `latitude` DECIMAL(9,6) NULL,
   `longitude` DECIMAL(9,6) NULL,
-  `altitude_m` SMALLINT NULL,
-  PRIMARY KEY (`circuit_key`))
-ENGINE = InnoDB;
+  `altitude_m` SMALLINT NULL
+) ENGINE=InnoDB;
 
 SHOW WARNINGS;
 
@@ -43,11 +41,10 @@ DROP TABLE IF EXISTS `f1_qlf_db`.`dim_constructor` ;
 SHOW WARNINGS;
 /* from data/constructors.csv */
 CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`dim_constructor` (
-  `constructor_key` INT NOT NULL,
+  `constructor_key` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
-  `nationality` VARCHAR(50) NULL,
-  PRIMARY KEY (`constructor_key`))
-ENGINE = InnoDB;
+  `nationality` VARCHAR(50) NULL
+) ENGINE=InnoDB;
 
 SHOW WARNINGS;
 
@@ -59,13 +56,12 @@ DROP TABLE IF EXISTS `f1_qlf_db`.`dim_driver` ;
 SHOW WARNINGS;
 /* from data/drivers.csv */
 CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`dim_driver` (
-  `driver_key` INT NOT NULL,
+  `driver_key` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
   `nationality` VARCHAR(50) NULL,
   `birthdate` DATE NULL,
-  `country` VARCHAR(80) NULL,
-  PRIMARY KEY (`driver_key`))
-ENGINE = InnoDB;
+  `country` VARCHAR(80) NULL
+) ENGINE=InnoDB;
 
 SHOW WARNINGS;
 
@@ -75,16 +71,17 @@ SHOW WARNINGS;
 DROP TABLE IF EXISTS `f1_qlf_db`.`dim_date` ;
 
 SHOW WARNINGS;
+ /* The date of qualification session equal to corresponding race date minus 1. 
+ The date of the relevant race must be taken from data/races.csv. */
 CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`dim_date` (
-  `date_key` INT NOT NULL, /* The date of qualification session equal to corresponding race date minus 1. The date of the relevant race must be taken from data/races.csv. */
+  `date_key` INT PRIMARY KEY, /* race date */
   `year` SMALLINT NOT NULL,
   `month` TINYINT NOT NULL,
   `day_of_month` TINYINT NOT NULL,
   `day_name` VARCHAR(10) NULL,
   `day_of_week` TINYINT NULL,
-  `time_bucket` ENUM('morning', 'afternoon', 'evening') NULL,
-  PRIMARY KEY (`date_key`))
-ENGINE = InnoDB;
+  `time_bucket` ENUM('morning','afternoon','evening') NULL
+) ENGINE=InnoDB;
 
 SHOW WARNINGS;
 
@@ -95,12 +92,11 @@ DROP TABLE IF EXISTS `f1_qlf_db`.`facts` ;
 
 SHOW WARNINGS;
 CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`facts` (
-  `qualifying_id` BIGINT NOT NULL,
+  `qualifying_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `dim_circuit_circuit_key` INT NOT NULL,
   `dim_constructor_constructor_key` INT NOT NULL,
   `dim_driver_driver_key` INT NOT NULL,
   `dim_date_date_key` INT NOT NULL,
-  `race_id` INT NOT NULL,
   `position` TINYINT NULL,
   `q1_ms` MEDIUMINT NULL, /* in milliseconds */
   `q2_ms` MEDIUMINT NULL,
@@ -113,7 +109,6 @@ CREATE TABLE IF NOT EXISTS `f1_qlf_db`.`facts` (
      'DSQ' — the driver was disqualified or had no valid times due to penalties.
      This column helps categorize the performance outcome of each driver during qualification. */
   `status` ENUM('OK', 'DNQ', 'DSQ', 'DNS') NULL,
-  PRIMARY KEY (`qualifying_id`, `dim_circuit_circuit_key`, `dim_constructor_constructor_key`, `dim_driver_driver_key`, `dim_date_date_key`),
   CONSTRAINT `fk_facts_dim_circuit`
     FOREIGN KEY (`dim_circuit_circuit_key`)
     REFERENCES `f1_qlf_db`.`dim_circuit` (`circuit_key`)

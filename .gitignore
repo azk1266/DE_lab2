@@ -1,6 +1,6 @@
 .clinerules
 /memory_bank
-data /*
+data/*
 venv 
-logs /*
+logs/*
 f1_etl_state.json

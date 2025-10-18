@@ -7,7 +7,7 @@ This project successfully implements a comprehensive ETL pipeline for analyzing 
 ## 📋 Deliverables Completed
 
 ### ✅ 1. Database Schema & Design
-- **File**: [`create_databade_schema.sql`](create_databade_schema.sql)
+- **File**: [`schemas/qualification_sessions_schema.sql`](schemas/qualification_sessions_schema.sql)
 - **Database**: `f1_qlf_db`
 - **Tables**: 5 tables (4 dimensions + 1 fact table)
 - **Features**: Foreign key constraints, indexes, proper data types
@@ -69,7 +69,7 @@ src/
 # Create database schema
 ./setup_database.sh
 # OR manually:
-mysql -u azalia2 -p123456 < create_databade_schema.sql
+mysql -u azalia2 -p123456 < schemas/qualification_sessions_schema.sql
 ```
 
 ### Pipeline Execution
