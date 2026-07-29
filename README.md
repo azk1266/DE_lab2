@@ -66,22 +66,22 @@ lab2/
 
 ## Key Features
 
-### 🚀 Performance Optimized
+### Performance Optimized
 - **Batch Processing**: Memory-efficient processing of large datasets
 - **Resumable Operations**: Continue from interruption point
 - **Configurable Batch Sizes**: Adapt to different hardware capabilities
 
-### 🔍 Data Quality Focused
+### Data Quality Focused
 - **Strict Validation**: Skip records with missing critical data
 - **Comprehensive Logging**: Detailed processing and error logs
 - **Data Integrity Checks**: Validate relationships and business rules
 
-### 🏎️ F1-Specific Logic
+### F1-Specific Logic
 - **Time Conversion**: Convert "1:26.572" format to milliseconds
 - **Status Derivation**: Determine qualifying outcomes (OK/DNQ/DNS/DSQ)
 - **Date Calculation**: Qualifying date = race date - 1 day
 
-### 🛠️ Production Ready
+### Production Ready
 - **Error Recovery**: Graceful handling of data issues
 - **State Management**: Track progress for large datasets
 - **Configuration Management**: Environment-based settings
